@@ -5,14 +5,21 @@
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![GitHub](https://img.shields.io/github/license/andi611/Mockingjay-Speech-Representation)](https://en.wikipedia.org/wiki/MIT_License)
 
-This is an open source project for Mockingjay, an unsupervised learning algorithm for speech representations.
+This is an open source project for Mockingjay, an unsupervised algorithm for learning speech representations introduced and described in the paper ["Mockingjay: Unsupervised Speech Representation Learning with Deep Bidirectional Transformer Encoders"](https://arxiv.org/abs/1910.12638).
 <img src="https://github.com/andi611/Mockingjay-Speech-Representation/blob/master/paper/training.png">
 
-Feel free to use or modify them, any bug report or improvement suggestion will be appreciated. If you have any questions, please contact r07942089@ntu.edu.tw. If you find this project helpful for your research, please do consider to cite [this paper](https://github.com/andi611/Mockingjay-Speech-Representation/blob/master/paper/liu.pdf), thanks!
+Feel free to use or modify them, any bug report or improvement suggestion will be appreciated. If you have any questions, please contact r07942089@ntu.edu.tw. If you find this project helpful for your research, please do consider to cite [this paper](#Citation), thanks!
 
 # Highlight
+## Pre-trained Models
+You can find pre-trained models here:
+
+ **[http://bit.ly/result_mockingjay](http://bit.ly/result_mockingjay)**
+
+ Their usage are explained bellow and furthur in [Step 3 of the Instruction Section](#Instructions).
+
 ## Extracting Speech Representations
-With this repo and the trained models, you can use it to extract speech representations from your target dataset. To do so, feed-forward the trained model on the target dataset and retrieve the extracted features by running the following example python code (example_extract.py):
+With this repo and the trained models, you can use it to extract speech representations from your target dataset. To do so, feed-forward the trained model on the target dataset and retrieve the extracted features by running the following example python code ([example_extract.py](example_extract.py)):
 ```python
 import torch
 from runner_mockingjay import get_mockingjay_model
@@ -55,7 +62,7 @@ As you can see, `reps` is essentially the Transformer Encoder hidden representat
 There are many ways to incorporate `reps` into your downtream task. One of the easiest way is to take only the outputs of the last Encoder layer (i.e., `all_layers=False`) as the input features to your downstream model, feel free to explore other mechanisms.
 
 ## Fine-tuning with your own downstream SLP tasks
-With this repo and the trained models, you can fine-tune the pre-trained Mockingjay model on your own dataset and tasks. To do so, take a look at the following example python code (example_finetune.py):
+With this repo and the trained models, you can fine-tune the pre-trained Mockingjay model on your own dataset and tasks. To do so, take a look at the following example python code ([example_finetune.py](example_finetune.py)):
 ```python
 import torch
 from runner_mockingjay import get_mockingjay_model
@@ -92,21 +99,32 @@ torch.save(states, PATH_TO_SAVE_YOUR_MODEL)
 # Requirements
 
 - Python 3
+- Pytorch 1.3.0 or above
 - Computing power (high-end GPU) and memory space (both RAM/GPU's RAM) is **extremely important** if you'd like to train your own model.
-- Required packages and their use are listed:
+- Required packages and their use are listed below, and also in [requirements.txt](requirements.txt):
 ```
-apex             # non-essential, faster optimization (only needed if enabled in config)
 editdistance     # error rate calculation
 joblib           # parallel feature extraction & decoding
 librosa          # feature extraction (for feature extraction only)
 pydub            # audio segmentation (for MOSEI dataset preprocessing only)
 pandas           # data management
-sentencepiece    # sub-word unit encoding (for feature extraction only, see https://github.com/google/sentencepiece#build-and-install-sentencepiece for install instruction)
 tensorboardX     # logger & monitor
 torch            # model & learning
 tqdm             # verbosity
 yaml             # config parser
 matplotlib       # visualization
+ipdb             # optional debugger
+numpy            # array computation
+scipy            # for feature extraction
+```
+The above packages can be installed by the command:
+```bash
+pip3 install -r requirements.txt
+```
+Below we list packages that need special attention, and we recommand you to install them manually:
+```
+apex             # non-essential, faster optimization (only needed if enabled in config)
+sentencepiece    # sub-word unit encoding (for feature extraction only, see https://github.com/google/sentencepiece#build-and-install-sentencepiece for install instruction)
 ```
 
 # Instructions
@@ -131,8 +149,8 @@ All settings will be parsed from the config file automatically to start training
 
 ### Step 3. Using Pre-trained Models on Downstream Tasks
 
-Once a Mockingjay model was trained, we can use the generated representations to train downstream tasks.
-See [Downstream section](https://github.com/andi611/Mockingjay-Speech-Representation#experiments---application-on-downstream-tasks) for reproducing downstream tasks mentioned in our paper, and see [Highlight section](https://github.com/andi611/Mockingjay-Speech-Representation#highlight) for designing your own downstream task.
+Once a Mockingjay model was trained, we can use the generated representations on downstream tasks.
+See the [Experiment section](#Experiments) for reproducing downstream task results mentioned in our paper, and see the [Highlight section](#Highlight) for incorporating the extracted representations with your own downstream task.
 
 Pre-trained models and their configs can be download from [HERE](http://bit.ly/result_mockingjay).
 To load with default path, models should be placed under the directory path: `--ckpdir=./result_mockingjay/` and name the model file manually with `--ckpt=`.
@@ -155,10 +173,12 @@ tensorboard --logdir=log/log_mockingjay/mockingjay_libri_sd1337/
 python3 -m tensorboard.main --logdir=log/log_mockingjay/mockingjay_libri_sd1337/
 ```
 
-## Experiments - Application on downstream tasks
+## Experiments
+
+### Application on downstream tasks
 See the instructions on the [Downstream wiki page](https://github.com/andi611/Mockingjay-Speech-Representation/wiki/Downstream-Task-Instructions) to reproduce our experiments.
 
-## Experiments - Comparing with APC
+### Comparing with APC
 See the instructions on the [APC wiki page](https://github.com/andi611/Mockingjay-Speech-Representation/wiki/Reproducing-APC-to-compare-with-Mockingjay) to reproduce our experiments.
 
 
@@ -172,11 +192,12 @@ See the instructions on the [APC wiki page](https://github.com/andi611/Mockingja
 
 ## Citation
 ```
-@inproceedings{liu2019Mockingjay,
-  title={Mockingjay: Unsupervised Speech Representation Learning with Deep Bidirectional Transformer Encoders},
-  author={Liu, Andy T. and Yang, Shu-wen and Chi, Po-Han and Hsu, Po-chun and Lee, Hung-yi},
-  booktitle={Submitted to: Acoustics, Speech and Signal Processing (ICASSP)},
-  year={2019},
-  organization={IEEE}
+@misc{liu2019mockingjay,
+    title={Mockingjay: Unsupervised Speech Representation Learning with Deep Bidirectional Transformer Encoders},
+    author={Andy T. Liu and Shu-wen Yang and Po-Han Chi and Po-chun Hsu and Hung-yi Lee},
+    year={2019},
+    eprint={1910.12638},
+    archivePrefix={arXiv},
+    primaryClass={eess.AS}
 }
 ```
