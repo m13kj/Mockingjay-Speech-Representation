@@ -560,9 +560,10 @@ class Tester(Solver):
                     # all_attentions: (batch_size, num_layer, num_head, Q_seq_len, K_seq_len)
 
                     for attentions in all_attentions:
-                        torch.save(attentions.cpu(), os.path.join(self.dump_dir, f'{idx}_attentions'))
+                        if idx >= 50:
+                            torch.save(attentions.cpu(), os.path.join(self.dump_dir, f'{idx}_attentions'))
                         idx += 1
-                        if idx >= 10:
+                        if idx >= 60:
                             self.verbose(f'Attention samples are saved to {self.dump_dir}')
                             exit()
                 else:
