@@ -555,13 +555,18 @@ class Tester(Solver):
                             self.verbose('Spectrogram head generated samples are saved to: {}'.format(self.dump_dir))
                             exit() # visualize the first 10 testing samples
                 elif self.output_attention:
+                    batch_size = spec_stacked.size(0)
+                    if idx + batch_size < 50:
+                        idx += batch_size
+                        continue
                     all_attentions, _ = self.mockingjay(spec_stacked, pos_enc, attention_mask=attn_mask, output_all_encoded_layers=True)
+                    all_attentions = [layer.cpu() for layer in all_attentions]
                     all_attentions = torch.stack(all_attentions).transpose(0, 1)
                     # all_attentions: (batch_size, num_layer, num_head, Q_seq_len, K_seq_len)
 
                     for attentions in all_attentions:
                         if idx >= 50:
-                            torch.save(attentions.cpu(), os.path.join(self.dump_dir, f'{idx}_attentions'))
+                            torch.save(attentions, os.path.join(self.dump_dir, f'{idx}_attentions'))
                         idx += 1
                         if idx >= 60:
                             self.verbose(f'Attention samples are saved to {self.dump_dir}')
