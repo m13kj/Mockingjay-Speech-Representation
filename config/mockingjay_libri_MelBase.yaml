@@ -22,10 +22,10 @@ optimizer:
 
 
 dataloader:
-  n_jobs: 12                                             # Subprocess used for torch Dataloader
-  batch_size: 12                                         # training batch size
-  dev_batch_size: 16                                    # used for dev/test splits
-  max_timestep: 1500                                    # Max length for audio feature (0 for no restriction)
+  n_jobs: 6                                             # Subprocess used for torch Dataloader
+  batch_size: 6                                         # training batch size
+  dev_batch_size: 1                                    # used for dev/test splits
+  max_timestep: 3000                                    # Max length for audio feature (0 for no restriction)
   max_label_len: 400                                    # Max length for output sequence (0 for no restriction)
 
   # for sentiment
