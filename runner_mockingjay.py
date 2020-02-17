@@ -211,7 +211,7 @@ def main():
 ########################
 # GET MOCKINGJAY MODEL #
 ########################
-def get_mockingjay_model(from_path='result/result_mockingjay/mockingjay_libri_sd1337_best/mockingjay-500000.ckpt', display_settings=False):
+def get_mockingjay_model(from_path='result/result_mockingjay/mockingjay_libri_sd1337_best/mockingjay-500000.ckpt', output_attention=False, display_settings=False):
     ''' Wrapper that loads the mockingjay model from checkpoint path '''
 
     # load config and paras
@@ -233,7 +233,7 @@ def get_mockingjay_model(from_path='result/result_mockingjay/mockingjay_libri_sd
     # load model with Tester
     from mockingjay.solver import Tester
     mockingjay = Tester(config, paras)
-    mockingjay.set_model(inference=True, with_head=False, from_path=from_path)
+    mockingjay.set_model(inference=True, with_head=False, from_path=from_path, output_attention=output_attention)
     return mockingjay
 
 

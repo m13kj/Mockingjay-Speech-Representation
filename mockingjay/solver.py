@@ -622,7 +622,13 @@ class Tester(Solver):
                 spec_stacked, pos_enc, attn_mask = self.process_MAM_data(spec=spec)
             else:
                 spec_stacked, pos_enc, attn_mask = self.process_data(spec=spec) # Use dataloader to process MAM data to increase speed
-            reps = self.mockingjay(spec_stacked, pos_enc, attention_mask=attn_mask, output_all_encoded_layers=all_layers)
+            result = self.mockingjay(spec_stacked, pos_enc, attention_mask=attn_mask, output_all_encoded_layers=all_layers)
+            if self.output_attention:
+                all_attentions, reps = result
+                all_attentions = [layer for layer in all_attentions]
+                all_attentions = torch.stack(all_attentions).transpose(0, 1)
+            else:
+                reps = result
 
             if type(reps) is list:
                 reps = torch.stack(reps)
@@ -635,7 +641,10 @@ class Tester(Solver):
             if len(reps.shape) == 4: reps = reps.permute(1, 0, 2, 3).contiguous() # if `all_layers`: (batch_size, num_hidden_layers, -1, hidden_size)
             elif len(reps.shape) != 3: raise ValueError('Invalid representation shape!') # if not `all_layers`: (batch_size, -1, hidden_size)
 
-        return reps
+        if self.output_attention:
+            return all_attentions, reps
+        else:
+            return reps
 
 
     def forward_with_head(self, spec, tile=True, process_from_loader=False):
