@@ -22,6 +22,92 @@ from ipdb import set_trace
 
 HALF_BATCHSIZE_SEQLEN = 400
 
+class TimitBoundaryDataset(Dataset):
+    def __init__(self, split, data_dir, bucket_size=3, erase_diagnal=1):
+        self.split = split
+        self.data_dir = data_dir
+        self.setname = 'train' if split == 'train' else 'test'
+        self.table = pd.read_csv(os.path.join(data_dir, f'{split}.csv'))
+        self.features = pickle.load(open(os.path.join(data_dir, f'{split}.pkl'), 'rb'))
+        self.erase_diagnal = erase_diagnal
+
+        self.X = []
+        batch = []
+        for idx, row in self.table.iterrows():
+            batch.append(row)
+            if len(batch) == bucket_size:
+                batch = pd.concat(batch, axis=1).transpose()
+                if (bucket_size >= 2) and (batch.feature_seqlen.max() > HALF_BATCHSIZE_SEQLEN):
+                    self.X.append(batch.iloc[:bucket_size//2])
+                    self.X.append(batch.iloc[bucket_size//2:])
+                else:
+                    self.X.append(batch)
+                batch = []
+
+        if len(batch) > 0:
+            self.X.append(batch)
+
+    def batch_boundaries(self, boundaries):
+        # boundaries: double list
+        boundaries_refined = []
+        for boundary in boundaries:
+            boundary = (np.array(boundary, dtype=np.float32) / 3).round().astype(np.int32)
+            boundary_refined = [boundary[0]]
+            preloc = boundary[0]
+            for loc in boundary[1:]:
+                if loc != preloc:
+                    preloc = loc
+                    boundary_refined.append(loc)
+            boundaries_refined.append(boundary_refined)
+        boundaries = boundaries_refined
+
+        bsx = len(boundaries)
+        maxlen = max([item[-1] for item in boundaries])
+        alignments = torch.zeros(bsx, maxlen, maxlen).float()
+        weights = torch.zeros(bsx, maxlen, maxlen).float()
+
+        for i, boundary in enumerate(boundaries):
+            seqlen = boundary[-1]
+            weights[i, :seqlen, :seqlen] = 1.0
+            curr_position = 0
+            for endpoint in boundary[1:]:
+                alignments[i, curr_position:endpoint, curr_position:endpoint] = 1.0
+                curr_position = endpoint
+
+        nodiagnal = copy.deepcopy(alignments)
+        if self.erase_diagnal > 0:
+            for k in range(maxlen):
+                start = max(0, k - self.erase_diagnal + 1)
+                end = min(maxlen, k + self.erase_diagnal)
+                nodiagnal[:, start:end, k] = 0.0
+
+        return alignments, nodiagnal, weights, boundaries
+
+    def __getitem__(self, idx):
+        df = self.X[idx]
+        x_batch = []
+        y_batch = []
+        for idx, row in df.iterrows():
+            x = torch.FloatTensor(self.features[row.featureid])
+            y = pd.eval(row.feature_boundary)
+            x_batch.append(x)
+            y_batch.append(y)
+        x_batch_pad = pad_sequence(x_batch, batch_first=True)
+        x_spec = process_test_MAM_data(spec=(x_batch_pad,))
+        alignments, nodiagnal, weights, y_batch = self.batch_boundaries(y_batch)
+        batch = {
+            'specs': x_spec,
+            'alignments': alignments,
+            'nodiagnal': nodiagnal,
+            'weights': weights,
+            'phoneseqs': y_batch
+        }
+        return batch
+
+    def __len__(self):
+        return len(self.X)
+
+
 class LibriBoundaryDataset(Dataset):
     def __init__(self, split, feature_dir, aligned_dir, bucket_size=3, erase_diagnal=1):
         self.split = split
@@ -80,10 +166,11 @@ class LibriBoundaryDataset(Dataset):
                     curr_phonepos = j
 
         nodiagnal = copy.deepcopy(alignments)
-        nodiagnal[:, :2, 0] = 0.0
-        for k in range(1, maxlen-1):
-            nodiagnal[:, k-self.erase_diagnal:k+1+self.erase_diagnal, k] = 0.0
-        nodiagnal[:, -2:, -1] = 0.0
+        if self.erase_diagnal > 0:
+            for k in range(maxlen):
+                start = max(0, k - self.erase_diagnal + 1)
+                end = min(maxlen, k + self.erase_diagnal)
+                nodiagnal[:, start:end, k] = 0.0
 
         return alignments, nodiagnal, weights
 
@@ -144,7 +231,7 @@ def test(args, model, mockingjay, trainloader, testloader, device='cuda'):
             alignments = batch['alignments']
             nodiagnal = batch['nodiagnal'].to(device=device)
             weights = batch['weights'].to(device=device)
-            attentions = attentions[:, :, :, :alignments.size(-1), :alignments.size(-1)]
+            attentions, alignments, nodiagnal, weights = resize([attentions, alignments, nodiagnal, weights])
             loss, logits = model(attentions, alignments, weights)
             loss_sum += loss.detach().cpu().item()
             num_batch += 1
@@ -166,7 +253,7 @@ def visual_attnmap(args, model, mockingjay, trainloader, testloader, device='cud
             alignments = batch['alignments']
             nodiagnal = batch['nodiagnal'].to(device=device)
             weights = batch['weights'].to(device=device)
-            attentions = attentions[:, :, :, :alignments.size(-1), :alignments.size(-1)]
+            attentions, alignments, nodiagnal, weights = resize([attentions, alignments, nodiagnal, weights])
             loss, logits = model(attentions, nodiagnal, weights)
             torch.save(logits.detach().cpu(), os.path.join(args.exppath, f'test{idx}.logit'))
             torch.save(alignments.detach().cpu(), os.path.join(args.exppath, f'test{idx}.align'))
@@ -178,11 +265,17 @@ def visual_attnmap(args, model, mockingjay, trainloader, testloader, device='cud
             alignments = batch['alignments']
             nodiagnal = batch['nodiagnal'].to(device=device)
             weights = batch['weights'].to(device=device)
-            attentions = attentions[:, :, :, :alignments.size(-1), :alignments.size(-1)]
+            attentions, alignments, nodiagnal, weights = resize([attentions, alignments, nodiagnal, weights])
             loss, logits = model(attentions, nodiagnal, weights)
             torch.save(logits.detach().cpu(), os.path.join(args.exppath, f'train{idx}.logit'))
             torch.save(alignments.detach().cpu(), os.path.join(args.exppath, f'train{idx}.align'))
             torch.save(nodiagnal.detach().cpu(), os.path.join(args.exppath, f'train{idx}.nodiag'))
+
+
+def resize(tensors):
+    minlen = min([tensor.size(-1) for tensor in tensors])
+    return [tensor[:, :minlen, :minlen] for tensor in tensors]
+
 
 def train(args, model, mockingjay, trainloader, testloader, device='cuda', train_steps=100000, eval_steps=100):
     opt = optim.Adam(model.parameters(), lr=args.lr)
@@ -200,7 +293,7 @@ def train(args, model, mockingjay, trainloader, testloader, device='cuda', train
             alignments = batch['alignments']
             nodiagnal = batch['nodiagnal'].to(device=device)
             weights = batch['weights'].to(device=device)
-            attentions = attentions[:, :, :, :alignments.size(-1), :alignments.size(-1)]
+            attentions, alignments, nodiagnal, weights = resize([attentions, alignments, nodiagnal, weights])
 
             loss, logits = model(attentions, nodiagnal, weights)
             loss.backward()
@@ -246,8 +339,9 @@ def get_preprocess_args():
     parser.add_argument('--mock', default='result/result_mockingjay/mockingjay_libri_sd1337_LinearLarge/mockingjay-500000.ckpt', type=str)
     parser.add_argument('--ckpt', default='', type=str)
     parser.add_argument('--num_scalar', default=144, type=int)
-    parser.add_argument('--feature_dir', default='data/libri_mel160_subword5000', type=str)
-    parser.add_argument('--aligned_dir', default='data/libri_phone', type=str)
+    parser.add_argument('--libri_feature_dir', default='data/libri_mel160_subword5000', type=str)
+    parser.add_argument('--libri_aligned_dir', default='data/libri_phone', type=str)
+    parser.add_argument('--timit_dir', default='data/timit_mel160_phoneme63_aligned', type=str)
     parser.add_argument('--bucket_size', default=8, type=int)
     parser.add_argument('--num_workers', default=16, type=int)
     parser.add_argument('--accumulate', default=4, type=int)
@@ -256,6 +350,9 @@ def get_preprocess_args():
     parser.add_argument('--erase_diagnal', default=1, type=int)
     parser.add_argument('--dataset', default='libri', type=str)
     args = parser.parse_args()
+
+    assert args.mode is not None
+    assert args.expname is not None
 
     setattr(args, 'exppath', os.path.join('boundary', args.expname))
     if not os.path.exists(args.exppath):
@@ -276,11 +373,11 @@ def main():
     args = get_preprocess_args()
 
     if args.dataset == 'libri':
-        trainset = LibriBoundaryDataset('train', args.feature_dir, args.aligned_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
-        testset = LibriBoundaryDataset('test', args.feature_dir, args.aligned_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
+        trainset = LibriBoundaryDataset('train', args.libri_feature_dir, args.libri_aligned_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
+        testset = LibriBoundaryDataset('test', args.libri_feature_dir, args.libri_aligned_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
     elif args.dataset == 'timit':
-        trainset = TimitBoundaryDataset('train', args.feature_dir, args.aligned_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
-        testset = TimitBoundaryDataset('test', args.feature_dir, args.aligned_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
+        trainset = TimitBoundaryDataset('train', args.timit_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
+        testset = TimitBoundaryDataset('test', args.timit_dir, bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
 
     trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=args.num_workers, collate_fn=lambda xs: xs[0])
     testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=args.num_workers, collate_fn=lambda xs: xs[0])
