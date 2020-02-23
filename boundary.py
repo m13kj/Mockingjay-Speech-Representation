@@ -333,9 +333,9 @@ def train(args, model, mockingjay, trainloader, testloader, device='cuda', train
 
 def get_preprocess_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', type=str)
+    parser.add_argument('--mode', type=str, required=True)
+    parser.add_argument('--expname', type=str, required=True)
     parser.add_argument('--dryrun', action='store_true')
-    parser.add_argument('--expname', type=str)
     parser.add_argument('--mock', default='result/result_mockingjay/mockingjay_libri_sd1337_LinearLarge/mockingjay-500000.ckpt', type=str)
     parser.add_argument('--ckpt', default='', type=str)
     parser.add_argument('--num_scalar', default=144, type=int)
@@ -350,9 +350,6 @@ def get_preprocess_args():
     parser.add_argument('--erase_diagnal', default=1, type=int)
     parser.add_argument('--dataset', default='libri', type=str)
     args = parser.parse_args()
-
-    assert args.mode is not None
-    assert args.expname is not None
 
     setattr(args, 'exppath', os.path.join('boundary', args.expname))
     if not os.path.exists(args.exppath):
