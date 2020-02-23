@@ -234,7 +234,7 @@ def get_mockingjay_model(from_path='result/result_mockingjay/mockingjay_libri_sd
     from mockingjay.solver import Tester
     mockingjay = Tester(config, paras)
     mockingjay.set_model(inference=True, with_head=False, from_path=from_path, output_attention=output_attention)
-    return mockingjay
+    return mockingjay, config, paras
 
 
 if __name__ == '__main__':
