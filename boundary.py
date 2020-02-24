@@ -132,7 +132,7 @@ class TimitBoundaryDataset(Dataset):
 
 class LibriBoundaryDataset(Dataset):
     def __init__(self, split, feature_dir, aligned_dir, mockcfg, bucket_size=3, erase_diagnal=1):
-        self.name == 'libri'
+        self.name = 'libri'
         self.split = split
         self.feature_dir = feature_dir
         self.aligned_dir = aligned_dir
@@ -292,6 +292,29 @@ def visual(args, model, mockingjay, trainloader, testloader, device='cuda'):
                         visualize(args.comet, attnmap[0], f'5.{name}.{attnid}.attn', step=idx)
 
 
+def visual_compare(args, model, mockingjay, trainloader, testloader, device='cuda'):
+    with torch.no_grad():
+        model.eval()
+        for split, dataset in zip(['train', 'test'], [trainloader.dataset, testloader.dataset]):
+            batch_num = dataset.__len__()
+            indices = [-30, -60, -90] if dataset.name == 'libri' else [-10, -15, -20]
+            for idx, indice in enumerate(indices):
+                batch = dataset[indice]
+                attentions, _ = mockingjay.forward(spec=batch['specs'], all_layers=True, tile=False, process_from_loader=True)
+                alignments = batch['alignments']
+                labels = batch['labels'].to(device=device)
+                weights = batch['weights'].to(device=device)
+                fileids = batch['fileids']
+                attentions, alignments, labels, weights = resize([attentions, alignments, labels, weights])
+                loss, logits = model(attentions, labels, weights)
+                name = f'{split}.{fileids[0]}'
+                print(f'Dealing with {name}')
+                lastlayer_attnmean = attentions[0, -1, :, :, :].mean(dim=0)
+                visualize(args.comet, logits[0].detach().cpu(), f'0.{name}.logit', step=idx)
+                visualize(args.comet, lastlayer_attnmean.detach().cpu(), f'1.{name}.lastlayer.attnmean', step=idx)
+                visualize(args.comet, alignments[0].detach().cpu(), f'2.{name}.align', step=idx)
+
+
 def test(args, model, mockingjay, trainloader, testloader, device='cuda'):
     with torch.no_grad():
         model.eval()
@@ -380,7 +403,7 @@ def get_preprocess_args():
     parser.add_argument('--num_workers', default=16, type=int)
     parser.add_argument('--accumulate', default=4, type=int)
     parser.add_argument('--device', default='cuda', type=str)
-    parser.add_argument('--lr', default=0.01, type=float)
+    parser.add_argument('--lr', default=0.05, type=float)
     parser.add_argument('--erase_diagnal', default=3, type=int)
     parser.add_argument('--train_shuffle', default=True, type=boolean_string)
     parser.add_argument('--test_shuffle', default=False, type=boolean_string)
