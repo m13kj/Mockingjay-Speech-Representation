@@ -125,7 +125,7 @@ class TimitBoundaryDataset(Dataset):
             'alignments': alignments,
             'labels': labels,
             'weights': weights,
-            'phoneseqs': y_batch,
+            'boundaries': y_batch,
             'fileids': id_batch
         }
         return batch
@@ -254,9 +254,13 @@ class Scalars(nn.Module):
         # logits: (bsx, maxlen, maxlen)
         loss = F.binary_cross_entropy(logits, labels, weight=weights)
 
+        if not self.training:
+            saliencies = (logits * weights).mean(dim=1)
+
         result = {
             'loss': loss,
-            'logits'; logits
+            'logits': logits,
+            'saliencies': saliencies
         }
         return result
 
@@ -270,6 +274,38 @@ def resize(tensors):
         tensor_resized = tensor[:, :minlen, :minlen] if tensor.dim() == 3 else tensor[:, :, :, :minlen, :minlen]
         tensors_resized.append(tensor_resized)
     return tensors_resized
+
+
+def visual_boundary(args, model, mockingjay, trainloader, testloader, device='cuda'):
+    with torch.no_grad():
+        model.eval()
+        for split, dataset in zip(['train', 'test'], [trainloader.dataset, testloader.dataset]):
+            batch_num = dataset.__len__()
+            indices = [-30, -60, -90] if dataset.name == 'libri' else [-10, -15, -20]
+            for idx, indice in enumerate(indices):
+                batch = dataset[indice]
+                attentions, _ = mockingjay.forward(spec=batch['specs'], all_layers=True, tile=False, process_from_loader=True)
+                alignments = batch['alignments']
+                labels = batch['labels'].to(device=device)
+                weights = batch['weights'].to(device=device)
+                fileids = batch['fileids']
+                boundaries = batch['boundaries']
+                attentions, alignments, labels, weights = resize([attentions, alignments, labels, weights])
+                result = model(attentions, labels, weights)
+                logits = result['logits']
+                saliencies = result['saliencies']
+
+                name = f'{split}.{fileids[0]}'
+                print(f'Dealing with {name}')
+
+                fig = plt.figure(figsize=(30, 30))
+                plt.plot(saliencies[0].detach().cpu())
+                for point in boundaries[0]:
+                    plt.axvline(x=point, color='r')
+                args.comet.log_figure(f'0.{name}.boundary', fig, step=idx)
+
+                visualize(args.comet, logits[0].detach().cpu(), f'1.{name}.logit', step=idx)
+                visualize(args.comet, alignments[0].detach().cpu(), f'2.{name}.align', step=idx)
 
 
 def visual(args, model, mockingjay, trainloader, testloader, device='cuda'):
