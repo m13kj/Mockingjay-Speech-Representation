@@ -36,8 +36,9 @@ def visualize(comet, tensor, name, step=None):
 
 
 class TimitBoundaryDataset(Dataset):
-    def __init__(self, split, data_dir, mockcfg, bucket_size=3, erase_diagnal=1):
+    def __init__(self, args, split, data_dir, mockcfg, bucket_size=3, erase_diagnal=1):
         self.name = 'timit'
+        self.args = args
         self.split = split
         self.data_dir = data_dir
         self.setname = 'train' if split == 'train' else 'test'
@@ -98,6 +99,9 @@ class TimitBoundaryDataset(Dataset):
                 start = max(0, k - self.erase_diagnal + 1)
                 end = min(maxlen, k + self.erase_diagnal)
                 weights[:, start:end, k] = 0.0
+        if self.args.erase_uptriangle:
+            for k in range(maxlen):
+                weights[:, k, k:] = 0.0
 
         labels = copy.deepcopy(alignments)
         return alignments, labels, weights, boundaries
@@ -131,8 +135,9 @@ class TimitBoundaryDataset(Dataset):
 
 
 class LibriBoundaryDataset(Dataset):
-    def __init__(self, split, feature_dir, aligned_dir, mockcfg, bucket_size=3, erase_diagnal=1):
+    def __init__(self, args, split, feature_dir, aligned_dir, mockcfg, bucket_size=3, erase_diagnal=1):
         self.name = 'libri'
+        self.args = args
         self.split = split
         self.feature_dir = feature_dir
         self.aligned_dir = aligned_dir
@@ -190,15 +195,17 @@ class LibriBoundaryDataset(Dataset):
                     curr_phonelen = 1
                     curr_phonepos = j
 
-        labels = copy.deepcopy(alignments)
         if self.erase_diagnal > 0:
             for k in range(maxlen):
                 start = max(0, k - self.erase_diagnal + 1)
                 end = min(maxlen, k + self.erase_diagnal)
-                labels[:, start:end, k] = 0.0
-        weights = copy.deepcopy(labels)
+                weights[:, start:end, k] = 0.0
+        if self.args.erase_uptriangle:
+            for k in range(maxlen):
+                weights[:, k, k:] = 0.0
 
-        return alignments, labels, weights
+        labels = copy.deepcopy(alignments)
+        return alignments, labels, weights, boundaries
 
     def __getitem__(self, idx):
         filenames = self.X[idx]
@@ -405,6 +412,7 @@ def get_preprocess_args():
     parser.add_argument('--device', default='cuda', type=str)
     parser.add_argument('--lr', default=0.05, type=float)
     parser.add_argument('--erase_diagnal', default=3, type=int)
+    parser.add_argument('--erase_uptriangle', action='store_true')
     parser.add_argument('--train_shuffle', default=True, type=boolean_string)
     parser.add_argument('--test_shuffle', default=False, type=boolean_string)
     args = parser.parse_args()
@@ -438,14 +446,14 @@ def main():
     model = model.to(device=args.device)
 
     if args.dataset == 'libri':
-        trainset = LibriBoundaryDataset('train', args.libri_feature_dir, args.libri_aligned_dir, mockcfg,
+        trainset = LibriBoundaryDataset(args, 'train', args.libri_feature_dir, args.libri_aligned_dir, mockcfg,
                                         bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
-        testset = LibriBoundaryDataset('test', args.libri_feature_dir, args.libri_aligned_dir, mockcfg,
+        testset = LibriBoundaryDataset(args, 'test', args.libri_feature_dir, args.libri_aligned_dir, mockcfg,
                                         bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
     elif args.dataset == 'timit':
-        trainset = TimitBoundaryDataset('train', args.timit_dir, mockcfg,
+        trainset = TimitBoundaryDataset(args, 'train', args.timit_dir, mockcfg,
                                         bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
-        testset = TimitBoundaryDataset('test', args.timit_dir, mockcfg,
+        testset = TimitBoundaryDataset(args, 'test', args.timit_dir, mockcfg,
                                         bucket_size=args.bucket_size, erase_diagnal=args.erase_diagnal)
 
     trainloader = DataLoader(trainset, batch_size=1, shuffle=args.train_shuffle, num_workers=args.num_workers, collate_fn=lambda xs: xs[0])
