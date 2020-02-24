@@ -253,7 +253,12 @@ class Scalars(nn.Module):
         logits = torch.bmm(attentions, attn_weights).squeeze().view(bsx, maxlen, maxlen)
         # logits: (bsx, maxlen, maxlen)
         loss = F.binary_cross_entropy(logits, labels, weight=weights)
-        return loss, logits
+
+        result = {
+            'loss': loss,
+            'logits'; logits
+        }
+        return result
 
 
 def resize(tensors):
@@ -281,7 +286,9 @@ def visual(args, model, mockingjay, trainloader, testloader, device='cuda'):
                 weights = batch['weights'].to(device=device)
                 fileids = batch['fileids']
                 attentions, alignments, labels, weights = resize([attentions, alignments, labels, weights])
-                loss, logits = model(attentions, labels, weights)
+                result = model(attentions, labels, weights)
+                loss = result['loss']
+                logits = result['logits']
 
                 name = f'{split}.{fileids[0]}'
                 print(f'Dealing with {name}')
@@ -313,7 +320,9 @@ def visual_compare(args, model, mockingjay, trainloader, testloader, device='cud
                 weights = batch['weights'].to(device=device)
                 fileids = batch['fileids']
                 attentions, alignments, labels, weights = resize([attentions, alignments, labels, weights])
-                loss, logits = model(attentions, labels, weights)
+                result = model(attentions, labels, weights)
+                loss = result['loss']
+                logits = result['logits']
                 name = f'{split}.{fileids[0]}'
                 print(f'Dealing with {name}')
                 lastlayer_attnmean = attentions[0, -1, :, :, :].mean(dim=0)
@@ -333,7 +342,9 @@ def test(args, model, mockingjay, trainloader, testloader, device='cuda'):
             labels = batch['labels'].to(device=device)
             weights = batch['weights'].to(device=device)
             attentions, alignments, labels, weights = resize([attentions, alignments, labels, weights])
-            loss, logits = model(attentions, labels, weights)
+            result = model(attentions, labels, weights)
+            loss = result['loss']
+            logits = result['logits']
             loss_sum += loss.detach().cpu().item()
             num_batch += 1
         loss_mean = loss_sum / num_batch
@@ -360,7 +371,9 @@ def train(args, model, mockingjay, trainloader, testloader, device='cuda'):
             fileids = batch['fileids']
             attentions, alignments, labels, weights = resize([attentions, alignments, labels, weights])
 
-            loss, logits = model(attentions, labels, weights)
+            result = model(attentions, labels, weights)
+            loss = result['loss']
+            logits = result['logits']
             loss.backward()
             if accu_num < args.accumulate:
                 accu_num += 1
