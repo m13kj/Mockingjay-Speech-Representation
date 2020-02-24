@@ -37,6 +37,7 @@ def visualize(comet, tensor, name, step=None):
 
 class TimitBoundaryDataset(Dataset):
     def __init__(self, split, data_dir, mockcfg, bucket_size=3, erase_diagnal=1):
+        self.name = 'timit'
         self.split = split
         self.data_dir = data_dir
         self.setname = 'train' if split == 'train' else 'test'
@@ -83,20 +84,22 @@ class TimitBoundaryDataset(Dataset):
 
         for i, boundary in enumerate(boundaries):
             seqlen = boundary[-1]
-            weights[i, :seqlen, :seqlen] = 1.0
             curr_position = 0
             for endpoint in boundary[1:]:
                 alignments[i, curr_position:endpoint, curr_position:endpoint] = 1.0
                 curr_position = endpoint
+            for j in range(len(boundary))[1:-1]:
+                pre_pos = boundary[j-1]
+                nxt_pos = boundary[j+1]
+                weights[i, pre_pos:nxt_pos, pre_pos:nxt_pos] = 1.0
 
-        labels = copy.deepcopy(alignments)
         if self.erase_diagnal > 0:
             for k in range(maxlen):
                 start = max(0, k - self.erase_diagnal + 1)
                 end = min(maxlen, k + self.erase_diagnal)
-                labels[:, start:end, k] = 0.0
-        weights = copy.deepcopy(labels)
+                weights[:, start:end, k] = 0.0
 
+        labels = copy.deepcopy(alignments)
         return alignments, labels, weights, boundaries
 
     def __getitem__(self, idx):
@@ -129,6 +132,7 @@ class TimitBoundaryDataset(Dataset):
 
 class LibriBoundaryDataset(Dataset):
     def __init__(self, split, feature_dir, aligned_dir, mockcfg, bucket_size=3, erase_diagnal=1):
+        self.name == 'libri'
         self.split = split
         self.feature_dir = feature_dir
         self.aligned_dir = aligned_dir
@@ -261,7 +265,7 @@ def visual(args, model, mockingjay, trainloader, testloader, device='cuda'):
         model.eval()
         for split, dataset in zip(['train', 'test'], [trainloader.dataset, testloader.dataset]):
             batch_num = dataset.__len__()
-            indices = [-30, -60, -90]
+            indices = [-30, -60, -90] if dataset.name == 'libri' else [-10, -15, -20]
             for idx, indice in enumerate(indices):
                 batch = dataset[indice]
                 attentions, _ = mockingjay.forward(spec=batch['specs'], all_layers=True, tile=False, process_from_loader=True)
@@ -280,11 +284,12 @@ def visual(args, model, mockingjay, trainloader, testloader, device='cuda'):
                 visualize(args.comet, labels[0].detach().cpu(), f'2.{name}.label', step=idx)
                 visualize(args.comet, weights[0].detach().cpu(), f'3.{name}.weight', step=idx)
 
-                bsx = attentions.size(0)
-                maxlen = attentions.size(-1)
-                attnmaps = attentions.detach().cpu().permute(1, 2, 0, 3, 4).reshape(-1, bsx, maxlen, maxlen)
-                for attnid, attnmap in enumerate(attnmaps):
-                    visualize(args.comet, attnmap[0], f'5.{name}.{attnid}.attn', step=idx)
+                if args.visual_attn:
+                    bsx = attentions.size(0)
+                    maxlen = attentions.size(-1)
+                    attnmaps = attentions.detach().cpu().permute(1, 2, 0, 3, 4).reshape(-1, bsx, maxlen, maxlen)
+                    for attnid, attnmap in enumerate(attnmaps):
+                        visualize(args.comet, attnmap[0], f'5.{name}.{attnid}.attn', step=idx)
 
 
 def test(args, model, mockingjay, trainloader, testloader, device='cuda'):
@@ -361,7 +366,9 @@ def get_preprocess_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str, required=True)
     parser.add_argument('--expname', type=str, required=True)
+    parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--dryrun', action='store_true')
+    parser.add_argument('--visual_attn', action='store_true')
     parser.add_argument('--mock', default='result/result_mockingjay/mockingjay_libri_sd1337_LinearLarge/mockingjay-500000.ckpt', type=str)
     parser.add_argument('--ckpt', default='', type=str)
     parser.add_argument('--libri_feature_dir', default='data/libri_mel160_subword5000', type=str)
@@ -375,7 +382,6 @@ def get_preprocess_args():
     parser.add_argument('--device', default='cuda', type=str)
     parser.add_argument('--lr', default=0.01, type=float)
     parser.add_argument('--erase_diagnal', default=3, type=int)
-    parser.add_argument('--dataset', default='libri', type=str)
     parser.add_argument('--train_shuffle', default=True, type=boolean_string)
     parser.add_argument('--test_shuffle', default=False, type=boolean_string)
     args = parser.parse_args()
